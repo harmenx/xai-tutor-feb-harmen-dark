@@ -11,12 +11,12 @@ import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface OrdersTableProps {
     orders: Order[];
-    selectedIds: Set<string>;
+    selectedIds: Set<number>;
     activeTab: string;
     onTabChange: (tab: string) => void;
     onSelectAll: (checked: boolean) => void;
-    onSelectOne: (id: string, checked: boolean) => void;
-    onDeleteOne: (id: string) => void;
+    onSelectOne: (id: number, checked: boolean) => void;
+    onDeleteOne: (id: number) => void;
     onBulkDelete: () => void;
     onBulkDuplicate: () => void;
     onClearSelection: () => void;
@@ -90,7 +90,7 @@ export const OrdersTable = ({
                                 />
                             </th>
                             <SortableHeader field="order_number" label="Order Number" />
-                            <th className="px-6 py-3 text-xs font-medium">Customer Name</th>
+                            <SortableHeader field="customer_name" label="Customer Name" />
                             <SortableHeader field="order_date" label="Order Date" />
                             <th className="px-6 py-3 text-xs font-medium">Status</th>
                             <SortableHeader field="total_amount" label="Total Amount" />

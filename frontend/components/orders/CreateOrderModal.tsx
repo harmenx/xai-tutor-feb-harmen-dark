@@ -13,11 +13,11 @@ interface CreateOrderModalProps {
 export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModalProps) => {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
+        order_number: '',
         customer_name: '',
-        customer_email: '',
         total_amount: '',
-        payment_status: 'unpaid',
-        status: 'pending'
+        payment_status: 'Unpaid',
+        status: 'Pending'
     });
 
     if (!isOpen) return null;
@@ -27,22 +27,17 @@ export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModal
         setLoading(true);
         try {
             await onSubmit({
-                customer: {
-                    name: formData.customer_name,
-                    email: formData.customer_email,
-                    avatar: null
-                },
+                ...formData,
                 total_amount: parseFloat(formData.total_amount) || 0,
-                status: formData.status,
-                payment_status: formData.payment_status
+                order_date: new Date().toISOString().split('T')[0]
             });
             onClose();
             setFormData({
+                order_number: '',
                 customer_name: '',
-                customer_email: '',
                 total_amount: '',
-                payment_status: 'unpaid',
-                status: 'pending'
+                payment_status: 'Unpaid',
+                status: 'Pending'
             });
         } catch (error) {
             console.error(error);
@@ -63,6 +58,18 @@ export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModal
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Order Number</label>
+                        <input
+                            required
+                            type="text"
+                            placeholder="#ORD..."
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            value={formData.order_number}
+                            onChange={e => setFormData({ ...formData, order_number: e.target.value })}
+                        />
+                    </div>
+
+                    <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Customer Name</label>
                         <input
                             required
@@ -71,18 +78,6 @@ export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModal
                             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                             value={formData.customer_name}
                             onChange={e => setFormData({ ...formData, customer_name: e.target.value })}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Customer Email</label>
-                        <input
-                            required
-                            type="email"
-                            placeholder="john@example.com"
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                            value={formData.customer_email}
-                            onChange={e => setFormData({ ...formData, customer_email: e.target.value })}
                         />
                     </div>
 
@@ -107,9 +102,9 @@ export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModal
                                 value={formData.status}
                                 onChange={e => setFormData({ ...formData, status: e.target.value })}
                             >
-                                <option value="pending">Pending</option>
-                                <option value="completed">Completed</option>
-                                <option value="refunded">Refunded</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Refunded">Refunded</option>
                             </select>
                         </div>
                         <div>
@@ -119,8 +114,8 @@ export const CreateOrderModal = ({ isOpen, onClose, onSubmit }: CreateOrderModal
                                 value={formData.payment_status}
                                 onChange={e => setFormData({ ...formData, payment_status: e.target.value })}
                             >
-                                <option value="unpaid">Unpaid</option>
-                                <option value="paid">Paid</option>
+                                <option value="Unpaid">Unpaid</option>
+                                <option value="Paid">Paid</option>
                             </select>
                         </div>
                     </div>

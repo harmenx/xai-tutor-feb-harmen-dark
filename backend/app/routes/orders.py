@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 
 from app.database import get_db
 
@@ -10,69 +9,35 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 # --- Pydantic Models ---
 
-class Customer(BaseModel):
-    name: str
-    email: str
-    avatar: Optional[str] = None
-
 class OrderBase(BaseModel):
     order_number: str
-    customer: Customer
+    customer_name: str
     order_date: str
     status: str
     total_amount: float
     payment_status: str
 
-class OrderCreate(BaseModel):
-    customer: Customer
-    total_amount: float
-    status: str = "pending"
-    payment_status: str = "unpaid"
+class OrderCreate(OrderBase):
+    pass
 
 class OrderUpdate(BaseModel):
-    customer: Optional[Customer] = None
+    # All fields optional for update
+    order_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    order_date: Optional[str] = None
     status: Optional[str] = None
     total_amount: Optional[float] = None
     payment_status: Optional[str] = None
 
-class OrderResponse(BaseModel):
-    id: str
-    order_number: str
-    customer: Customer
-    order_date: str
-    status: str
-    total_amount: float
-    payment_status: str
-    created_at: str
-    updated_at: str
+class OrderResponse(OrderBase):
+    id: int
 
 class BulkStatusRequest(BaseModel):
-    order_ids: List[str]
+    order_ids: List[int]
     status: str
 
 class BulkIdsRequest(BaseModel):
-    order_ids: List[str]
-
-
-# --- Helper Functions ---
-
-def row_to_order(row) -> dict:
-    """Convert database row to order dict matching contract."""
-    return {
-        "id": str(row["id"]),
-        "order_number": row["order_number"],
-        "customer": {
-            "name": row["customer_name"],
-            "email": row["customer_email"],
-            "avatar": row["customer_avatar"]
-        },
-        "order_date": row["order_date"],
-        "status": row["status"],
-        "total_amount": row["total_amount"],
-        "payment_status": row["payment_status"],
-        "created_at": row.get("created_at", datetime.utcnow().isoformat()),
-        "updated_at": row.get("updated_at", datetime.utcnow().isoformat())
-    }
+    order_ids: List[int]
 
 
 # --- Routes ---
@@ -81,13 +46,13 @@ def row_to_order(row) -> dict:
 def list_orders(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: Optional[str] = Query(None, description="Filter by status (e.g., Pending, Completed)"),
     search: Optional[str] = Query(None, description="Search by customer name or order number"),
-    sort_by: Optional[str] = Query("id", description="Sort by field"),
+    sort_by: Optional[str] = Query("id", description="Sort by field (order_number, order_date, total_amount, payment_status, customer_name)"),
     sort_order: Optional[str] = Query("desc", description="Sort order (asc or desc)")
 ):
     """
-    Fetch all orders with optional filtering, pagination, and sorting.
+    Fetch all orders with optional filtering and pagination.
     """
     try:
         with get_db() as conn:
@@ -98,20 +63,12 @@ def list_orders(
             params = []
             conditions = []
             
-            # Map status filter values
             if status:
-                status_map = {
-                    "incomplete": "Pending",
-                    "finished": "Completed",
-                    "pending": "Pending",
-                    "completed": "Completed",
-                    "refunded": "Refunded"
-                }
-                mapped_status = status_map.get(status.lower(), status)
                 conditions.append("status = ?")
-                params.append(mapped_status)
+                params.append(status)
                 
             if search:
+                # Basic case-insensitive search
                 conditions.append("(customer_name LIKE ? OR order_number LIKE ?)")
                 search_term = f"%{search}%"
                 params.append(search_term)
@@ -134,13 +91,7 @@ def list_orders(
                 sort_order = "desc"
             
             # Fetch paginated data with sorting
-            query = f"""
-                SELECT id, order_number, customer_name, customer_email, customer_avatar,
-                       order_date, status, total_amount, payment_status, created_at, updated_at
-                {base_query} 
-                ORDER BY {sort_by} {sort_order.upper()} 
-                LIMIT ? OFFSET ?
-            """
+            query = f"SELECT id, order_number, customer_name, order_date, status, total_amount, payment_status {base_query} ORDER BY {sort_by} {sort_order.upper()} LIMIT ? OFFSET ?"
             
             offset = (page - 1) * limit
             params.append(limit)
@@ -149,9 +100,20 @@ def list_orders(
             cursor.execute(query, params)
             rows = cursor.fetchall()
             
-            orders = [row_to_order(row) for row in rows]
+            orders = [
+                {
+                    "id": row["id"],
+                    "order_number": row["order_number"],
+                    "customer_name": row["customer_name"],
+                    "order_date": row["order_date"],
+                    "status": row["status"],
+                    "total_amount": row["total_amount"],
+                    "payment_status": row["payment_status"]
+                }
+                for row in rows
+            ]
             
-            total_pages = (total_items + limit - 1) // limit  # Ceiling division
+            total_pages = (total_items + limit - 1) // limit
             
             return {
                 "orders": orders,
@@ -173,7 +135,7 @@ def get_order_stats():
         with get_db() as conn:
             cursor = conn.cursor()
             
-            # Total Orders This Month (simplified - just total for now)
+            # Total Orders
             cursor.execute("SELECT COUNT(*) FROM orders")
             total = cursor.fetchone()[0]
             
@@ -181,7 +143,7 @@ def get_order_stats():
             cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'Pending'")
             pending = cursor.fetchone()[0]
             
-            # Shipped/Completed
+            # Completed (Shipped)
             cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'Completed'")
             shipped = cursor.fetchone()[0]
             
@@ -190,17 +152,17 @@ def get_order_stats():
             refunded = cursor.fetchone()[0]
             
             return {
-                "total_orders_this_month": total,
-                "pending_orders": pending,
-                "shipped_orders": shipped,
-                "refunded_orders": refunded
+                "total": total,
+                "pending": pending,
+                "shipped": shipped,
+                "refunded": refunded
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
-def get_order(order_id: str):
+def get_order(order_id: int):
     """
     Fetch single order details.
     """
@@ -208,8 +170,7 @@ def get_order(order_id: str):
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, order_number, customer_name, customer_email, customer_avatar,
-                       order_date, status, total_amount, payment_status, created_at, updated_at
+                SELECT id, order_number, customer_name, order_date, status, total_amount, payment_status 
                 FROM orders WHERE id = ?
             """, (order_id,))
             row = cursor.fetchone()
@@ -217,7 +178,15 @@ def get_order(order_id: str):
             if row is None:
                 raise HTTPException(status_code=404, detail="Order not found")
                 
-            return row_to_order(row)
+            return {
+                "id": row["id"],
+                "order_number": row["order_number"],
+                "customer_name": row["customer_name"],
+                "order_date": row["order_date"],
+                "status": row["status"],
+                "total_amount": row["total_amount"],
+                "payment_status": row["payment_status"]
+            }
     except HTTPException:
         raise
     except Exception as e:
@@ -232,57 +201,23 @@ def create_order(order: OrderCreate):
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            
-            # Generate order number
-            cursor.execute("SELECT MAX(id) FROM orders")
-            max_id = cursor.fetchone()[0] or 0
-            order_number = f"#ORD{max_id + 1000 + 1}"
-            
-            current_time = datetime.utcnow().isoformat()
-            order_date = datetime.utcnow().strftime("%Y-%m-%d")
-            
             cursor.execute("""
-                INSERT INTO orders (
-                    order_number, customer_name, customer_email, customer_avatar,
-                    order_date, status, total_amount, payment_status, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                order_number,
-                order.customer.name,
-                order.customer.email,
-                order.customer.avatar,
-                order_date,
-                order.status,
-                order.total_amount,
-                order.payment_status,
-                current_time,
-                current_time
-            ))
+                INSERT INTO orders (order_number, customer_name, order_date, status, total_amount, payment_status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (order.order_number, order.customer_name, order.order_date, order.status, order.total_amount, order.payment_status))
             
             order_id = cursor.lastrowid
             
             return {
-                "id": str(order_id),
-                "order_number": order_number,
-                "customer": {
-                    "name": order.customer.name,
-                    "email": order.customer.email,
-                    "avatar": order.customer.avatar
-                },
-                "order_date": order_date,
-                "status": order.status,
-                "total_amount": order.total_amount,
-                "payment_status": order.payment_status,
-                "created_at": current_time,
-                "updated_at": current_time
+                "id": order_id,
+                **order.dict()
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.put("/{order_id}", response_model=OrderResponse)
-def update_order(order_id: str, order: OrderUpdate):
+def update_order(order_id: int, order: OrderUpdate):
     """
     Update an order.
     """
@@ -297,46 +232,39 @@ def update_order(order_id: str, order: OrderUpdate):
                 raise HTTPException(status_code=404, detail="Order not found")
             
             # Build update query dynamically
-            update_fields = []
-            values = []
-            
-            if order.customer:
-                update_fields.extend(["customer_name = ?", "customer_email = ?", "customer_avatar = ?"])
-                values.extend([order.customer.name, order.customer.email, order.customer.avatar])
-            
-            if order.status is not None:
-                update_fields.append("status = ?")
-                values.append(order.status)
-            
-            if order.total_amount is not None:
-                update_fields.append("total_amount = ?")
-                values.append(order.total_amount)
-            
-            if order.payment_status is not None:
-                update_fields.append("payment_status = ?")
-                values.append(order.payment_status)
-            
-            if not update_fields:
+            update_data = order.dict(exclude_unset=True)
+            if not update_data:
                 # Nothing to update, return existing
-                return row_to_order(existing)
-            
-            # Add updated_at
-            update_fields.append("updated_at = ?")
-            values.append(datetime.utcnow().isoformat())
+                return {
+                    "id": existing["id"],
+                    "order_number": existing["order_number"],
+                    "customer_name": existing["customer_name"],
+                    "order_date": existing["order_date"],
+                    "status": existing["status"],
+                    "total_amount": existing["total_amount"],
+                    "payment_status": existing["payment_status"]
+                }
+                
+            set_clauses = [f"{key} = ?" for key in update_data.keys()]
+            values = list(update_data.values())
             values.append(order_id)
             
-            query = f"UPDATE orders SET {', '.join(update_fields)} WHERE id = ?"
+            query = f"UPDATE orders SET {', '.join(set_clauses)} WHERE id = ?"
             cursor.execute(query, values)
             
             # Fetch updated
-            cursor.execute("""
-                SELECT id, order_number, customer_name, customer_email, customer_avatar,
-                       order_date, status, total_amount, payment_status, created_at, updated_at
-                FROM orders WHERE id = ?
-            """, (order_id,))
+            cursor.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
             updated = cursor.fetchone()
             
-            return row_to_order(updated)
+            return {
+                "id": updated["id"],
+                "order_number": updated["order_number"],
+                "customer_name": updated["customer_name"],
+                "order_date": updated["order_date"],
+                "status": updated["status"],
+                "total_amount": updated["total_amount"],
+                "payment_status": updated["payment_status"]
+            }
     except HTTPException:
         raise
     except Exception as e:
@@ -344,7 +272,7 @@ def update_order(order_id: str, order: OrderUpdate):
 
 
 @router.delete("/{order_id}", status_code=204)
-def delete_order(order_id: str):
+def delete_order(order_id: int):
     """
     Delete an order.
     """
@@ -372,34 +300,18 @@ def bulk_update_status(request: BulkStatusRequest):
         with get_db() as conn:
             cursor = conn.cursor()
             
-            # Convert string IDs to integers for query
-            order_ids = [int(id) for id in request.order_ids]
+            placeholders = ", ".join(["?"] * len(request.order_ids))
+            query = f"UPDATE orders SET status = ? WHERE id IN ({placeholders})"
             
-            placeholders = ", ".join(["?"] * len(order_ids))
-            current_time = datetime.utcnow().isoformat()
-            
-            query = f"UPDATE orders SET status = ?, updated_at = ? WHERE id IN ({placeholders})"
-            params = [request.status, current_time] + order_ids
+            params = [request.status] + request.order_ids
             cursor.execute(query, params)
             
-            # Fetch updated orders
-            cursor.execute(f"""
-                SELECT id, order_number, customer_name, customer_email, customer_avatar,
-                       order_date, status, total_amount, payment_status, created_at, updated_at
-                FROM orders WHERE id IN ({placeholders})
-            """, order_ids)
-            
-            updated_orders = [row_to_order(row) for row in cursor.fetchall()]
-            
-            return {
-                "updated_count": cursor.rowcount,
-                "orders": updated_orders
-            }
+            return {"message": f"Updated {cursor.rowcount} orders to status '{request.status}'"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
-@router.post("/bulk/duplicate", status_code=201)
+@router.post("/bulk/duplicate")
 def bulk_duplicate_orders(request: BulkIdsRequest):
     """
     Duplicate multiple orders.
@@ -408,46 +320,22 @@ def bulk_duplicate_orders(request: BulkIdsRequest):
         with get_db() as conn:
             cursor = conn.cursor()
             
-            order_ids = [int(id) for id in request.order_ids]
-            placeholders = ", ".join(["?"] * len(order_ids))
-            
-            cursor.execute(f"SELECT * FROM orders WHERE id IN ({placeholders})", order_ids)
+            placeholders = ", ".join(["?"] * len(request.order_ids))
+            select_query = f"SELECT * FROM orders WHERE id IN ({placeholders})"
+            cursor.execute(select_query, request.order_ids)
             rows = cursor.fetchall()
             
-            new_orders = []
-            current_time = datetime.utcnow().isoformat()
-            
+            new_orders_count = 0
             for row in rows:
                 new_order_number = f"{row['order_number']} (Copy)"
                 cursor.execute("""
-                    INSERT INTO orders (
-                        order_number, customer_name, customer_email, customer_avatar,
-                        order_date, status, total_amount, payment_status, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    new_order_number,
-                    row['customer_name'],
-                    row['customer_email'],
-                    row['customer_avatar'],
-                    row['order_date'],
-                    row['status'],
-                    row['total_amount'],
-                    row['payment_status'],
-                    current_time,
-                    current_time
-                ))
+                    INSERT INTO orders (order_number, customer_name, order_date, status, total_amount, payment_status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (new_order_number, row['customer_name'], row['order_date'], row['status'], row['total_amount'], row['payment_status']))
+                new_orders_count += 1
                 
-                new_orders.append({
-                    "id": str(cursor.lastrowid),
-                    "order_number": new_order_number,
-                    "original_order_id": str(row['id'])
-                })
+            return {"message": f"Duplicated {new_orders_count} orders"}
             
-            return {
-                "duplicated_count": len(new_orders),
-                "new_orders": new_orders
-            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -461,15 +349,11 @@ def bulk_delete_orders(request: BulkIdsRequest):
         with get_db() as conn:
             cursor = conn.cursor()
             
-            order_ids = [int(id) for id in request.order_ids]
-            placeholders = ", ".join(["?"] * len(order_ids))
-            
+            placeholders = ", ".join(["?"] * len(request.order_ids))
             query = f"DELETE FROM orders WHERE id IN ({placeholders})"
-            cursor.execute(query, order_ids)
             
-            return {
-                "deleted_count": cursor.rowcount,
-                "deleted_ids": request.order_ids
-            }
+            cursor.execute(query, request.order_ids)
+            
+            return {"message": f"Deleted {cursor.rowcount} orders"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

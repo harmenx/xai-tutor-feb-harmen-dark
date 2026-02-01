@@ -26,8 +26,8 @@ export const OrderRow = ({ order, selected, onSelect, onDelete }: OrderRowProps)
             </td>
             <td className="px-6 py-3.5">
                 <div className="flex items-center gap-3">
-                    <Avatar src={order.customer.avatar || `https://i.pravatar.cc/150?u=${order.id}`} alt={order.customer.name} />
-                    <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{order.customer.name}</span>
+                    <Avatar src={`https://i.pravatar.cc/150?u=${order.id}`} alt={order.customer_name} />
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{order.customer_name}</span>
                 </div>
             </td>
             <td className="px-6 py-3.5 text-sm text-slate-600 dark:text-slate-400">

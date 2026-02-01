@@ -14,9 +14,9 @@ const API_URL = 'http://localhost:8000';
 
 export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [stats, setStats] = useState({ total_orders_this_month: 0, pending_orders: 0, shipped_orders: 0, refunded_orders: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, shipped: 0, refunded: 0 });
   const [loading, setLoading] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('All');
 
@@ -81,7 +81,7 @@ export default function Home() {
     }
   };
 
-  const handleSelectOne = (id: string, checked: boolean) => {
+  const handleSelectOne = (id: number, checked: boolean) => {
     const newSelected = new Set(selectedIds);
     if (checked) {
       newSelected.add(id);
@@ -91,7 +91,7 @@ export default function Home() {
     setSelectedIds(newSelected);
   };
 
-  const handleDeleteOne = async (id: string) => {
+  const handleDeleteOne = async (id: number) => {
     if (!confirm('Are you sure you want to delete this order?')) return;
     try {
       await fetch(`${API_URL}/orders/${id}`, { method: 'DELETE' });
