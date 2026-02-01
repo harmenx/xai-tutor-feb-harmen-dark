@@ -1,13 +1,23 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import health_router, items_router
+from app.routes import health_router, items_router, orders_router
 
 app = FastAPI(title="Backend Exercise API", version="1.0.0")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register routers
 app.include_router(health_router)
 app.include_router(items_router)
-
+app.include_router(orders_router)
 
 if __name__ == "__main__":
     import uvicorn
